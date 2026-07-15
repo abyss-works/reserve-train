@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reserve-train
+  namespace: reserve-train-prod
+  labels:
+    app: reserve-train
+    project: reserve-train
+    environment: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reserve-train
+      project: reserve-train
+      environment: prod
+  template:
+    metadata:
+      labels:
+        app: reserve-train
+        project: reserve-train
+        environment: prod
+    spec:
+      containers:
+      - name: reserve-train
+        image: reserve-train:prod
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: KORAIL_ID
+          valueFrom:
+            secretKeyRef:
+              name: korail-cred
+              key: id
+        - name: KORAIL_PW
+          valueFrom:
+            secretKeyRef:
+              name: korail-cred
+              key: password
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"

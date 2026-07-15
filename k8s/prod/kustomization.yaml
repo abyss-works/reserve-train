@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: reserve-train-prod
+labels:
+- pairs:
+    project: reserve-train
+    environment: prod
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+images:
+- name: reserve-train
+  newName: registry.abyssworks.dev/reserve-train
+  newTag: prod

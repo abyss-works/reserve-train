@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reserve-train
+  namespace: reserve-train-prod
+  labels:
+    project: reserve-train
+    environment: prod
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: "reserve-train.abyssworks.dev"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: reserve-train
+            port:
+              number: 80
