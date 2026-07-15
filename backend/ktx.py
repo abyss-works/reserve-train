@@ -1,16 +1,201 @@
 """
-ktx.py — korail2 기반 KTX 예매 래퍼
+ktx.py — korail2 기반 KTX 예매 래퍼 (Dynapath 대응 포함)
 """
+import base64
 import os
+import random
+import re
+import string
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
+
+try:
+    from Crypto.Cipher import AES
+    from Crypto.Util.Padding import pad
+except ImportError:
+    AES = None
+    pad = None
 
 from korail2 import Korail, KorailError, NeedToLoginError, NoResultsError, SoldOutError
 from korail2.korail2 import TrainType, ReserveOption
 
 
-# ─── 도메인 데이터 클래스 ───────────────────────────────────
+# ─── Dynapath Anti-bot 대응 ────────────────────────────
+
+DEFAULT_USER_AGENT = "Dalvik/2.1.0 (Linux; U; Android 13; SM-S928N Build/UP1A.231005.007)"
+
+DYNAPATH_PATHS = [
+    "/classes/com.korail.mobile.certification.TicketReservation",
+    "/classes/com.korail.mobile.nonMember.NonMemTicket",
+    "/classes/com.korail.mobile.research.TrainResearch",
+    "/classes/com.korail.mobile.research.ResidualSeatsResearch.do",
+    "/classes/com.korail.mobile.seatMovie.ScheduleView",
+    "/classes/com.korail.mobile.seatMovie.ScheduleViewSpecial",
+    "/classes/com.korail.mobile.trn.prcFare.do",
+    "/classes/com.korail.mobile.login.Login",
+]
+
+
+class DynaPathMasterEngine:
+    APP_ID = "com.korail.talk"
+    AS_VALUE = "%5B38ff229cb34c7dda8e28220a2d750cce%5D"
+    DEVICE_MODEL = "SM-S928N"
+    OS_TYPE = "Android"
+    SDK_VERSION = "v1"
+
+    def __init__(self):
+        self.table = "3FE9jgRD4KdCyuawklqGJYmvfMn15P7US8XbxeLQtWT6OicBAopINs2Vh0HZrz"
+        self.i8 = 161
+        self.i9 = 30
+        self.i10 = 2
+        self.app_start_ts = str(int(time.time() * 1000))
+
+    def string2xa1s(self, data):
+        result = []
+        idx = 0
+        while idx < len(data):
+            cp = ord(data[idx])
+            idx += 1
+            if cp < 128:
+                result.append(cp)
+            elif cp < 2048:
+                result.append(128 | ((cp >> 7) & 15))
+                result.append(cp & 127)
+            elif cp >= 262144:
+                result.append(160)
+                result.append((cp >> 14) & 127)
+                result.append((cp >> 7) & 127)
+                result.append(cp & 127)
+            elif (63488 & cp) != 55296:
+                result.append(((cp >> 14) & 15) | 144)
+                result.append((cp >> 7) & 127)
+                result.append(cp & 127)
+        return result
+
+    def make_key(self, key):
+        total = 0
+        for ch in key:
+            cp = ord(ch)
+            bit = 32768
+            for _ in range(16):
+                if bit & cp:
+                    break
+                bit >>= 1
+            total = (total * (bit << 1)) + cp
+        return total
+
+    def internal_char(self, base_table, remainder, current):
+        seen = 0
+        for ch in base_table:
+            if ch in current:
+                continue
+            if seen == remainder:
+                return ch
+            seen += 1
+        return " "
+
+    def make_encode_table(self, number, encode_size, base_table):
+        chars = ""
+        temp = number
+        for idx in range(encode_size):
+            divisor = encode_size - idx
+            remainder = temp % divisor
+            chars += self.internal_char(base_table, remainder, chars)
+            temp //= divisor
+        return chars
+
+    def encode_normal_be(self, data, table):
+        values = self.string2xa1s(data)
+        output = []
+        digits = [0] * (self.i10 + 1)
+        idx = 0
+        tail = len(values) % self.i10
+        body_size = len(values) - tail
+        while idx < body_size:
+            value = 0
+            for _ in range(self.i10):
+                value = (value * self.i8) + values[idx]
+                idx += 1
+            for di in range(self.i10 + 1):
+                digits[di] = value % self.i9
+                value //= self.i9
+            for di in range(self.i10, -1, -1):
+                output.append(table[digits[di]])
+        if tail > 0:
+            value = 0
+            for _ in range(tail):
+                value = (value * self.i8) + values[idx]
+                idx += 1
+            for di in range(tail + 1):
+                digits[di] = value % self.i9
+                value //= self.i9
+            while tail >= 0:
+                output.append(table[digits[tail]])
+                tail -= 1
+        return "".join(output)
+
+    def generate_token(self, device_id, timestamp_ms, nonce):
+        plaintext = (
+            f"ai={self.APP_ID}&di={device_id}&as={self.AS_VALUE}&su=false&dbg=false&emu=false&hk=false"
+            f"&it={self.app_start_ts}&ts={timestamp_ms}&rt=0&os=13&dm={self.DEVICE_MODEL}&st={self.OS_TYPE}&sv={self.SDK_VERSION}"
+        )
+        dyn_key = f"v1+{nonce}+{timestamp_ms}"
+        key_encoded = self.encode_normal_be(dyn_key, self.table)
+        table = self.make_encode_table(self.make_key(dyn_key), self.i9, self.table)
+        body_encoded = self.encode_normal_be(plaintext, table)
+        return f"bEeEP{self.table[len(key_encoded)]}{key_encoded}{body_encoded}"
+
+
+# ─── korail2 패치 적용 ─────────────────────────────────
+
+_original_request = None
+
+
+def _patch_korail():
+    """korail2의 requests.Session을 패치하여 Dynapath 헤더를 추가"""
+    global _original_request
+    import requests
+
+    engine = DynaPathMasterEngine()
+    sid_key = b"2485dd54d9deaa36"
+    device_id = "558a4f02041657ea"
+    _device = "AD"
+
+    original_send = requests.Session.send
+
+    def patched_send(self, req, **kwargs):
+        url = req.url
+        if any(path in url for path in DYNAPATH_PATHS):
+            ts = int(time.time() * 1000)
+            nonce = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
+            req.headers["x-dynapath-m-token"] = engine.generate_token(device_id, ts, nonce)
+
+            if AES is not None and pad is not None:
+                plaintext = f"{_device}{ts}".encode("utf-8")
+                cipher = AES.new(sid_key, AES.MODE_CBC, iv=sid_key)
+                sid = base64.b64encode(cipher.encrypt(pad(plaintext, 16))).decode("utf-8") + "\n"
+
+                if req.body:
+                    body = req.body
+                    if isinstance(body, bytes):
+                        body = body.decode("utf-8", errors="replace")
+                    if "Sid=" not in body:
+                        if "&" in body[-3:]:
+                            req.body = body + f"Sid={sid}"
+                        else:
+                            req.body = body + f"&Sid={sid}"
+        return original_send(self, req, **kwargs)
+
+    requests.Session.send = patched_send
+    _original_request = original_send
+
+
+_patch_korail()
+
+
+# ─── 도메인 데이터 클래스 ───────────────────────────────
 
 
 @dataclass
@@ -29,15 +214,15 @@ class TrainInfo:
     _raw: object = field(repr=False)
 
     @property
-    def dep_display(self) -> str:
+    def dep_display(self):
         return f"{self.dep_time[:2]}:{self.dep_time[2:4]}"
 
     @property
-    def arr_display(self) -> str:
+    def arr_display(self):
         return f"{self.arr_time[:2]}:{self.arr_time[2:4]}"
 
     @property
-    def duration(self) -> str:
+    def duration(self):
         h = int(self.arr_time[:2]) - int(self.dep_time[:2])
         m = int(self.arr_time[2:4]) - int(self.dep_time[2:4])
         if m < 0:
@@ -63,15 +248,15 @@ class ReservationInfo:
     _raw: object = field(repr=False)
 
     @property
-    def dep_display(self) -> str:
+    def dep_display(self):
         return f"{self.dep_time[:2]}:{self.dep_time[2:4]}"
 
     @property
-    def arr_display(self) -> str:
+    def arr_display(self):
         return f"{self.arr_time[:2]}:{self.arr_time[2:4]}"
 
     @property
-    def limit_display(self) -> str:
+    def limit_display(self):
         m = int(self.buy_limit_date[4:6])
         d = int(self.buy_limit_date[6:])
         t = f"{self.buy_limit_time[:2]}:{self.buy_limit_time[2:4]}"
@@ -106,23 +291,29 @@ class NetworkError(Exception):
 
 class KorailClient:
     def __init__(self):
-        self._korail: Optional[Korail] = None
-        self._logged_in: bool = False
-        self._user_name: str = ""
+        self._korail = None
+        self._logged_in = False
+        self._user_name = ""
 
     @property
-    def logged_in(self) -> bool:
+    def logged_in(self):
         return self._logged_in and self._korail is not None
 
     @property
-    def user_name(self) -> str:
+    def user_name(self):
         return self._user_name
 
-    def login(self, korail_id: str, korail_pw: str) -> str:
+    def login(self, korail_id, korail_pw):
+        import requests
         try:
+            session = requests.Session()
+            session.headers.update({"User-Agent": DEFAULT_USER_AGENT})
             self._korail = Korail(korail_id, korail_pw, auto_login=True)
+            # 세션 User-Agent 재설정 (korail 생성자에서 덮어쓸 수 있음)
+            if hasattr(self._korail, '_session'):
+                self._korail._session.headers.update({"User-Agent": DEFAULT_USER_AGENT})
             self._logged_in = True
-            self._user_name = self._korail.user_name if hasattr(self._korail, 'user_name') and self._korail.user_name else ""
+            self._user_name = getattr(self._korail, 'user_name', '') or ''
             return self._user_name
         except NeedToLoginError as e:
             self._logged_in = False
@@ -130,8 +321,8 @@ class KorailClient:
         except KorailError as e:
             self._logged_in = False
             msg = str(e)
-            if "MACRO" in msg or "error" in msg.lower():
-                raise AuthError(f"Korail 로그인 오류 (anti-bot 가능): {msg}") from e
+            if "MACRO" in msg:
+                raise AuthError(f"Korail 매크로 감지: {msg}") from e
             raise AuthError(f"Korail 오류: {msg}") from e
         except Exception as e:
             self._logged_in = False
@@ -139,16 +330,8 @@ class KorailClient:
                 raise NetworkError(f"네트워크 연결 실패: {e}") from e
             raise KorailClientError(f"알 수 없는 오류: {e}") from e
 
-    def search(
-        self,
-        dep: str,
-        arr: str,
-        date: Optional[str] = None,
-        time: Optional[str] = None,
-        train_type: str = "ktx",
-        include_no_seats: bool = False,
-        include_waiting_list: bool = False,
-    ) -> list[TrainInfo]:
+    def search(self, dep, arr, date=None, time=None, train_type="ktx",
+               include_no_seats=False, include_waiting_list=False):
         if not self._logged_in or self._korail is None:
             raise AuthError("로그인이 필요합니다")
 
@@ -199,10 +382,7 @@ class KorailClient:
             raise NoResults(f"'{dep}'→'{arr}' 조건에 맞는 열차가 없습니다")
         return results
 
-    def reserve(
-        self, train: TrainInfo, seat_option: str = "general-first",
-        try_waiting: bool = False,
-    ) -> ReservationInfo:
+    def reserve(self, train, seat_option="general-first", try_waiting=False):
         if not self._logged_in or self._korail is None:
             raise AuthError("로그인이 필요합니다")
         opt_map = {
@@ -222,14 +402,10 @@ class KorailClient:
         except Exception as e:
             raise NetworkError(f"네트워크 오류: {e}") from e
         return ReservationInfo(
-            rsv_id=rsv.rsv_id or "",
-            train_type=rsv.train_type_name or "",
-            train_no=rsv.train_no or "",
-            dep_name=rsv.dep_name or "",
-            arr_name=rsv.arr_name or "",
-            dep_date=rsv.dep_date or "",
-            dep_time=rsv.dep_time or "",
-            arr_time=rsv.arr_time or "",
+            rsv_id=rsv.rsv_id or "", train_type=rsv.train_type_name or "",
+            train_no=rsv.train_no or "", dep_name=rsv.dep_name or "",
+            arr_name=rsv.arr_name or "", dep_date=rsv.dep_date or "",
+            dep_time=rsv.dep_time or "", arr_time=rsv.arr_time or "",
             price=rsv.price if hasattr(rsv, 'price') else 0,
             seat_count=rsv.seat_no_count if hasattr(rsv, 'seat_no_count') else 1,
             buy_limit_date=rsv.buy_limit_date if hasattr(rsv, 'buy_limit_date') else "",
@@ -237,7 +413,7 @@ class KorailClient:
             _raw=rsv,
         )
 
-    def reservations(self) -> list[ReservationInfo]:
+    def reservations(self):
         if not self._logged_in or self._korail is None:
             raise AuthError("로그인이 필요합니다")
         try:
@@ -252,14 +428,10 @@ class KorailClient:
         results = []
         for r in rsv_list:
             results.append(ReservationInfo(
-                rsv_id=r.rsv_id or "",
-                train_type=r.train_type_name or "",
-                train_no=r.train_no or "",
-                dep_name=r.dep_name or "",
-                arr_name=r.arr_name or "",
-                dep_date=r.dep_date or "",
-                dep_time=r.dep_time or "",
-                arr_time=r.arr_time or "",
+                rsv_id=r.rsv_id or "", train_type=r.train_type_name or "",
+                train_no=r.train_no or "", dep_name=r.dep_name or "",
+                arr_name=r.arr_name or "", dep_date=r.dep_date or "",
+                dep_time=r.dep_time or "", arr_time=r.arr_time or "",
                 price=r.price if hasattr(r, 'price') else 0,
                 seat_count=r.seat_no_count if hasattr(r, 'seat_no_count') else 1,
                 buy_limit_date=r.buy_limit_date if hasattr(r, 'buy_limit_date') else "",
@@ -268,7 +440,7 @@ class KorailClient:
             ))
         return results
 
-    def cancel(self, reservation: ReservationInfo) -> bool:
+    def cancel(self, reservation):
         if not self._logged_in or self._korail is None:
             raise AuthError("로그인이 필요합니다")
         try:

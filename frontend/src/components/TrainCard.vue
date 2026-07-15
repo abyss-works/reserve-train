@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Train } from '@/types'
 
-const props = defineProps<{ train: Train }>()
+const props = defineProps<{ train: Train; selected?: boolean }>()
 const emit = defineEmits<{ select: [] }>()
 
 function seatLabel(available: boolean, waiting: boolean): string {
@@ -19,7 +19,10 @@ function seatColor(available: boolean, waiting: boolean): string {
 
 <template>
   <div
-    class="bg-surface-elevated rounded-xl border border-border p-4 cursor-pointer active:scale-[0.98] transition-transform"
+    :class="[
+      'rounded-xl border p-4 cursor-pointer active:scale-[0.99] transition-all',
+      selected ? 'bg-brand/10 border-brand' : 'bg-surface-elevated border-border hover:border-brand/50'
+    ]"
     @click="emit('select')"
   >
     <div class="flex items-center justify-between mb-2">
@@ -31,8 +34,8 @@ function seatColor(available: boolean, waiting: boolean): string {
         <div class="text-text text-lg font-bold">{{ train.dep_display }}</div>
         <div class="text-text-muted text-xs">{{ train.dep_name }}</div>
       </div>
-      <div class="flex-1 mx-3 border-t border-border-dashed border-dashed relative">
-        <span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-text-dim text-xs">→</span>
+      <div class="flex-1 mx-3 border-t border-dashed border-border relative">
+        <span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-text-dim text-xs bg-surface-elevated px-1">→</span>
       </div>
       <div class="text-right">
         <div class="text-text text-lg font-bold">{{ train.arr_display }}</div>

@@ -97,8 +97,16 @@ export const useTrainStore = defineStore('train', () => {
     reserveResult.value = null
   }
 
+  function clearAll() {
+    trains.value = []
+    reservations.value = []
+    reserveResult.value = null
+    error.value = ''
+    message.value = ''
+  }
+
   return {
     trains, reservations, loading, error, reserveResult, message,
-    search, loadReservations, reserve, cancel, clearReserveResult,
+    search, loadReservations, reserve, cancel, clearReserveResult, clearAll,
   }
 })
