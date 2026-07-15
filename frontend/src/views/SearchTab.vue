@@ -12,13 +12,34 @@ import {
 const store = useTrainStore()
 const stations = ref<Station[]>([])
 
-const dep = ref('서울')
-const arr = ref('부산')
-const depDate = ref(new Date().toISOString().slice(0, 10))
-const depTime = ref('09:00')
-const trainType = ref('all')
-const includeNoSeats = ref(true)
-const includeWaiting = ref(false)
+const LS_KEY = 'ktx_search_query'
+
+function loadQuery<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (!raw) return fallback
+    const data = JSON.parse(raw)
+    return (key in data ? data[key] : fallback) as T
+  } catch { return fallback }
+}
+
+function saveQuery() {
+  localStorage.setItem(LS_KEY, JSON.stringify({
+    dep: dep.value, arr: arr.value,
+    depDate: depDate.value, depTime: depTime.value,
+    trainType: trainType.value,
+    includeNoSeats: includeNoSeats.value,
+    includeWaiting: includeWaiting.value,
+  }))
+}
+
+const dep = ref(loadQuery('dep', '서울'))
+const arr = ref(loadQuery('arr', '부산'))
+const depDate = ref(loadQuery('depDate', new Date().toISOString().slice(0, 10)))
+const depTime = ref(loadQuery('depTime', '09:00'))
+const trainType = ref(loadQuery('trainType', 'all'))
+const includeNoSeats = ref(loadQuery('includeNoSeats', true))
+const includeWaiting = ref(loadQuery('includeWaiting', false))
 const selectedIdx = ref<number | null>(null)
 const seatOption = ref('general-first')
 const tryWaiting = ref(false)
@@ -43,7 +64,7 @@ const seatOptions = [
 ]
 
 const hours = Array.from({ length: 18 }, (_, i) => i + 6)
-const selectedHour = ref(9)
+const selectedHour = ref(parseInt(loadQuery('depTime', '09:00').split(':')[0]) || 9)
 
 onMounted(async () => {
   const res = await getStations()
@@ -55,6 +76,7 @@ async function onSearch() {
   store.clearReserveResult()
   searched.value = true
   store.error = ''
+  saveQuery()
   await store.search({
     dep: dep.value, arr: arr.value,
     date: depDate.value.replace(/-/g, ''),
