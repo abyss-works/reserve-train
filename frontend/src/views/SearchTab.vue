@@ -123,8 +123,15 @@ const dateStr = computed(() => {
 })
 
 function onDateUpdate(val: unknown) {
-  if (typeof val === 'string') depDate.value = val.slice(0, 10)
-  else if (val instanceof Date) depDate.value = val.toISOString().slice(0, 10)
+  if (typeof val === 'string') {
+    depDate.value = val.slice(0, 10)
+  } else if (val instanceof Date) {
+    // toISOString()은 UTC 기준 → 한국(UTC+9)에서 하루 전으로 표시됨
+    const y = val.getFullYear()
+    const m = String(val.getMonth() + 1).padStart(2, '0')
+    const d = String(val.getDate()).padStart(2, '0')
+    depDate.value = `${y}-${m}-${d}`
+  }
   dateMenu.value = false
 }
 
