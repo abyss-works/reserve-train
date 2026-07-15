@@ -13,4 +13,4 @@ resources:
 images:
 - name: reserve-train
   newName: registry.abyssworks.dev/reserve-train
-  newTag: v14
+  newTag: v15

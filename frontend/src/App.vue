@@ -8,6 +8,7 @@ import MonitorTab from '@/views/MonitorTab.vue'
 
 const auth = useAuthStore()
 const store = useTrainStore()
+const drawer = ref(false)
 const activeTab = ref<'search' | 'reservations' | 'monitor'>('search')
 
 const korailId = ref('')
@@ -33,124 +34,68 @@ async function onLogin() {
 function onLogout() {
   auth.logout()
   store.clearAll()
+  drawer.value = false
 }
 
 function setTab(tab: 'search' | 'reservations' | 'monitor') {
   activeTab.value = tab
-  if (tab === 'reservations') {
-    store.loadReservations()
-  }
+  drawer.value = false
+  if (tab === 'reservations') store.loadReservations()
 }
 </script>
 
 <template>
-  <div class="bg-bg min-h-screen flex">
-    <!-- Sidebar -->
-    <aside class="w-72 bg-surface border-r border-border flex flex-col shrink-0">
-      <div class="p-5 border-b border-border">
-        <div class="text-2xl mb-1">🚄</div>
-        <h1 class="text-text text-lg font-semibold">KTX 예매 도우미</h1>
-      </div>
+  <v-app>
+    <!-- App Bar -->
+    <v-app-bar elevation="1">
+      <v-app-bar-nav-icon @click="drawer = !drawer" />
+      <v-app-bar-title>🚄 KTX 예매 도우미</v-app-bar-title>
 
-      <!-- Login Form (not logged in) -->
-      <div v-if="!auth.loggedIn" class="p-5 space-y-3">
-        <div>
-          <label class="block text-text-muted text-xs mb-1">Korail ID</label>
-          <input
-            v-model="korailId"
-            type="text"
-            placeholder="회원번호 / 이메일 / 전화번호"
-            class="w-full bg-surface-elevated border border-border rounded-lg px-3 py-2 text-text text-sm placeholder:text-text-dim focus:outline-none focus:ring-2 focus:ring-brand"
-          />
-        </div>
-        <div>
-          <label class="block text-text-muted text-xs mb-1">비밀번호</label>
-          <input
-            v-model="korailPw"
-            type="password"
-            placeholder="********"
-            class="w-full bg-surface-elevated border border-border rounded-lg px-3 py-2 text-text text-sm placeholder:text-text-dim focus:outline-none focus:ring-2 focus:ring-brand"
-          />
-        </div>
-        <p v-if="loginError" class="text-danger text-xs">{{ loginError }}</p>
-        <button
-          class="w-full bg-brand text-black font-semibold rounded-lg py-2 text-sm hover:bg-brand-hover transition-colors disabled:opacity-50 cursor-pointer"
-          :disabled="loginLoading"
-          @click="onLogin"
-        >
-          {{ loginLoading ? '로그인 중...' : '🔑 로그인' }}
-        </button>
-        <p class="text-text-dim text-[10px] text-center">
-          로그인 정보는 서버에 저장되지 않습니다
-        </p>
-      </div>
+      <template v-if="auth.loggedIn" #append>
+        <v-btn variant="text" prepend-icon="mdi-logout" size="small" @click="onLogout">
+          {{ auth.userName || '회원' }}
+        </v-btn>
+      </template>
+    </v-app-bar>
 
-      <!-- User Info (logged in) -->
-      <div v-else class="p-5 space-y-3">
-        <div class="flex items-center gap-2">
-          <span class="text-brand text-lg">👤</span>
-          <span class="text-text text-sm font-medium">{{ auth.userName || '회원' }}</span>
-        </div>
-        <button
-          class="w-full border border-border text-text-muted rounded-lg py-2 text-sm hover:bg-surface-elevated transition-colors cursor-pointer"
-          @click="onLogout"
-        >
-          로그아웃
-        </button>
-      </div>
+    <!-- Navigation Drawer -->
+    <v-navigation-drawer v-model="drawer" temporary>
+      <!-- Login (not logged in) -->
+      <template v-if="!auth.loggedIn">
+        <v-list-item class="pa-4">
+          <v-text-field v-model="korailId" label="Korail ID" placeholder="회원번호/이메일/전화번호" variant="outlined" density="compact" hide-details />
+        </v-list-item>
+        <v-list-item class="pa-4 pt-0">
+          <v-text-field v-model="korailPw" label="비밀번호" type="password" variant="outlined" density="compact" hide-details />
+        </v-list-item>
+        <v-list-item v-if="loginError" class="text-caption text-error px-4 pb-2">{{ loginError }}</v-list-item>
+        <v-list-item class="px-4 pb-2">
+          <v-btn color="primary" block :loading="loginLoading" @click="onLogin">로그인</v-btn>
+        </v-list-item>
+      </template>
 
-      <!-- Navigation Tabs -->
-      <nav class="flex-1 p-3 space-y-1">
-        <button
-          :class="[
-            'w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer',
-            activeTab === 'search'
-              ? 'bg-brand/10 text-brand'
-              : 'text-text-muted hover:bg-surface-elevated hover:text-text'
-          ]"
-          @click="setTab('search')"
-        >
-          🔍 열차 조회
-        </button>
-        <button
-          :class="[
-            'w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer',
-            activeTab === 'reservations'
-              ? 'bg-brand/10 text-brand'
-              : 'text-text-muted hover:bg-surface-elevated hover:text-text'
-          ]"
-          @click="setTab('reservations')"
-        >
-          📋 예약 내역
-        </button>
-        <button
-          :class="[
-            'w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer',
-            activeTab === 'monitor'
-              ? 'bg-brand/10 text-brand'
-              : 'text-text-muted hover:bg-surface-elevated hover:text-text'
-          ]"
-          @click="setTab('monitor')"
-        >
-          📡 자동 예매
-        </button>
-      </nav>
+      <!-- Logged in -->
+      <template v-else>
+        <v-list-item class="text-body-2 font-weight-medium px-4 py-3">
+          👤 {{ auth.userName || '회원' }}
+        </v-list-item>
+      </template>
 
-      <div class="p-5 border-t border-border">
-        <p class="text-text-dim text-[10px]">v0.1.0 · korail2 기반</p>
-      </div>
-    </aside>
+      <v-divider />
+
+      <!-- Navigation -->
+      <v-list nav>
+        <v-list-item prepend-icon="mdi-magnify" title="열차 조회" :active="activeTab === 'search'" @click="setTab('search')" />
+        <v-list-item prepend-icon="mdi-ticket-outline" title="예약 내역" :active="activeTab === 'reservations'" @click="setTab('reservations')" />
+        <v-list-item prepend-icon="mdi-clock-outline" title="자동 예매" :active="activeTab === 'monitor'" @click="setTab('monitor')" />
+      </v-list>
+    </v-navigation-drawer>
 
     <!-- Main Content -->
-    <main class="flex-1 overflow-auto">
-      <!-- Search Tab -->
+    <v-main class="bg-grey-lighten-3" style="min-height: 100vh;">
       <SearchTab v-if="activeTab === 'search'" />
-
-      <!-- Reservations Tab -->
       <ReservationsTab v-else-if="activeTab === 'reservations'" />
-
-      <!-- Monitor Tab -->
       <MonitorTab v-else-if="activeTab === 'monitor'" />
-    </main>
-  </div>
+    </v-main>
+  </v-app>
 </template>
