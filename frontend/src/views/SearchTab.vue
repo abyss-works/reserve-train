@@ -37,12 +37,12 @@ const dep = ref(loadQuery('dep', '서울'))
 const arr = ref(loadQuery('arr', '부산'))
 const depDate = ref(loadQuery('depDate', new Date().toISOString().slice(0, 10)))
 const depTime = ref(loadQuery('depTime', '09:00'))
-const trainType = ref(loadQuery('trainType', 'all'))
+const trainType = ref(loadQuery('trainType', 'ktx'))
 const includeNoSeats = ref(loadQuery('includeNoSeats', true))
 const includeWaiting = ref(loadQuery('includeWaiting', false))
 const selectedIdx = ref<number | null>(null)
 const seatOption = ref('general-first')
-const tryWaiting = ref(false)
+const tryWaiting = ref(true)
 const searched = ref(false)
 const monMsg = ref('')
 const dateMenu = ref(false)
@@ -151,7 +151,7 @@ function onHourUpdate(h: number) {
             <v-combobox v-model="dep" :items="stations.map(s => s.name)" label="출발역" variant="outlined" density="compact" hide-details />
           </v-col>
           <v-col cols="2" class="d-flex align-center justify-center">
-            <v-btn icon variant="text" size="small" color="grey" @click="swapStation">
+            <v-btn icon variant="text" size="small" color="grey" tabindex="-1" @click="swapStation">
               <ArrowLeftRight :size="18" />
             </v-btn>
           </v-col>
