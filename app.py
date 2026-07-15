@@ -340,22 +340,29 @@ else:
     with tab2:
         st.markdown("#### 내 예약 내역")
 
-        if st.button("🔄 새로고침", use_container_width=False):
-            st.rerun()
+        if "my_reservations" not in st.session_state:
+            st.session_state.my_reservations = None
 
-        with st.spinner("예약 내역을 불러오는 중..."):
-            try:
-                client = st.session_state.client
-                my_rsvs = client.reservations()
-            except AuthError as e:
-                st.error(f"인증 오류: {e}")
-                st.session_state.logged_in = False
-                st.rerun()
-                my_rsvs = []
-            except (NetworkError, KorailClientError) as e:
-                st.error(str(e))
-                my_rsvs = []
+        col_btn, col_status = st.columns([1, 3])
+        with col_btn:
+            refresh_clicked = st.button("🔄 내역 불러오기", use_container_width=False)
+        with col_status:
+            if st.session_state.my_reservations is not None:
+                st.caption(f"총 {len(st.session_state.my_reservations)}건")
 
+        if refresh_clicked or st.session_state.my_reservations is None:
+            with st.spinner("예약 내역을 불러오는 중..."):
+                try:
+                    client = st.session_state.client
+                    st.session_state.my_reservations = client.reservations()
+                except AuthError as e:
+                    st.warning(f"예약 내역을 불러올 수 없습니다: {e}")
+                    st.session_state.my_reservations = []
+                except (NetworkError, KorailClientError) as e:
+                    st.warning(str(e))
+                    st.session_state.my_reservations = []
+
+        my_rsvs = st.session_state.my_reservations
         if not my_rsvs:
             st.info("📭 현재 예약 내역이 없습니다")
         else:
