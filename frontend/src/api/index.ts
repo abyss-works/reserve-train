@@ -1,5 +1,5 @@
 import type {
-  ApiResult, LoginResult, SearchResult,
+  ApiResult, LoginResult, SearchResult, StationsResult,
   ReservationsResult, ReserveResult,
 } from '@/types'
 
@@ -60,6 +60,7 @@ export async function searchTrains(params: {
   train_type: string; include_no_seats: boolean; include_waiting_list: boolean
 }): Promise<ApiResult<SearchResult>> {
   const sid = getSessionId()
+  if (!sid) return { error: '로그인이 필요합니다' }
   const qp: Record<string, string> = {
     dep: params.dep, arr: params.arr, date: params.date || '', time: params.time || '',
     train_type: params.train_type, include_no_seats: String(params.include_no_seats),
@@ -85,4 +86,8 @@ export async function cancelReservation(reservationIdx: number): Promise<ApiResu
     method: 'POST',
     body: JSON.stringify({ reservation_idx: reservationIdx }),
   })
+}
+
+export async function getStations(): Promise<ApiResult<StationsResult>> {
+  return apiCall<StationsResult>('/api/v1/stations')
 }

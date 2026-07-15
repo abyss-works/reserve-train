@@ -46,6 +46,15 @@ export interface SearchResult {
   message?: string
 }
 
+export interface Station {
+  name: string
+  code: string
+}
+
+export interface StationsResult {
+  stations: Station[]
+}
+
 export interface ReservationsResult {
   reservations: Reservation[]
 }

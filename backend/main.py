@@ -97,6 +97,28 @@ def logout(session_id: str = ""):
     return {"success": True}
 
 
+@app.get("/api/v1/stations")
+def get_stations():
+    """코레일 역 목록 조회"""
+    import requests
+    try:
+        resp = requests.get(
+            "https://smart.letskorail.com/classes/com.korail.mobile.common.stationdata",
+            timeout=10,
+        )
+        data = resp.json()
+        stns = data.get("stns", {}).get("stn", [])
+        return {
+            "stations": [
+                {"name": s["stn_nm"], "code": s["stn_cd"]}
+                for s in stns
+                if s.get("stn_nm")
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"역 정보 조회 실패: {e}")
+
+
 @app.get("/api/v1/search")
 def search_trains(
     dep: str = "서울",

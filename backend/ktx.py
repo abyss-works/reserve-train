@@ -154,9 +154,14 @@ _original_request = None
 
 
 def _patch_korail():
-    """korail2의 requests.Session을 패치하여 Dynapath 헤더를 추가"""
+    """korail2 모듈 상수 + requests.Session 패치"""
     global _original_request
     import requests
+    import korail2.korail2 as korail_mod
+
+    # 버전/UA 패치 (생성 전에 적용)
+    korail_mod.DEFAULT_USER_AGENT = DEFAULT_USER_AGENT
+    korail_mod.KORAIL_DOMAIN = "https://smart.letskorail.com:443"
 
     engine = DynaPathMasterEngine()
     sid_key = b"2485dd54d9deaa36"
@@ -168,10 +173,14 @@ def _patch_korail():
     def patched_send(self, req, **kwargs):
         url = req.url
         if any(path in url for path in DYNAPATH_PATHS):
+            # User-Agent
+            req.headers["User-Agent"] = DEFAULT_USER_AGENT
+            # Dynapath token
             ts = int(time.time() * 1000)
             nonce = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
             req.headers["x-dynapath-m-token"] = engine.generate_token(device_id, ts, nonce)
 
+            # Sid 파라미터
             if AES is not None and pad is not None:
                 plaintext = f"{_device}{ts}".encode("utf-8")
                 cipher = AES.new(sid_key, AES.MODE_CBC, iv=sid_key)
@@ -182,10 +191,7 @@ def _patch_korail():
                     if isinstance(body, bytes):
                         body = body.decode("utf-8", errors="replace")
                     if "Sid=" not in body:
-                        if "&" in body[-3:]:
-                            req.body = body + f"Sid={sid}"
-                        else:
-                            req.body = body + f"&Sid={sid}"
+                        req.body = body + ("" if body.endswith("&") else "&") + f"Sid={sid}"
         return original_send(self, req, **kwargs)
 
     requests.Session.send = patched_send
@@ -306,15 +312,19 @@ class KorailClient:
     def login(self, korail_id, korail_pw):
         import requests
         try:
-            session = requests.Session()
-            session.headers.update({"User-Agent": DEFAULT_USER_AGENT})
             self._korail = Korail(korail_id, korail_pw, auto_login=True)
-            # 세션 User-Agent 재설정 (korail 생성자에서 덮어쓸 수 있음)
-            if hasattr(self._korail, '_session'):
-                self._korail._session.headers.update({"User-Agent": DEFAULT_USER_AGENT})
+
+            # korail2.login()은 실패 시 False 반환 (예외 미발생)
+            if not hasattr(self._korail, 'logined') or not self._korail.logined:
+                self._logged_in = False
+                self._korail = None
+                raise AuthError("로그인 실패: Korail 계정 정보를 확인해주세요")
+
             self._logged_in = True
-            self._user_name = getattr(self._korail, 'user_name', '') or ''
+            self._user_name = getattr(self._korail, 'name', '') or ''
             return self._user_name
+        except AuthError:
+            raise
         except NeedToLoginError as e:
             self._logged_in = False
             raise AuthError(f"로그인 실패: {e}") from e

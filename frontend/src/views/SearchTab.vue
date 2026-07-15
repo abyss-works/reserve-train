@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useTrainStore } from '@/stores/train'
+import { getStations } from '@/api'
+import type { Station } from '@/types'
 import TrainCard from '@/components/TrainCard.vue'
 
 const store = useTrainStore()
+
+const stations = ref<Station[]>([])
+const stationsLoading = ref(false)
 
 const dep = ref('서울')
 const arr = ref('부산')
 const depDate = ref(new Date().toISOString().slice(0, 10))
 const depTime = ref('09:00')
-const trainType = ref('ktx')
+const trainType = ref('all')
 const includeNoSeats = ref(false)
 const includeWaiting = ref(false)
 const selectedIdx = ref<number | null>(null)
@@ -17,10 +22,20 @@ const seatOption = ref('general-first')
 const tryWaiting = ref(false)
 const searched = ref(false)
 
+onMounted(async () => {
+  stationsLoading.value = true
+  const res = await getStations()
+  if (res.data) {
+    stations.value = res.data.stations
+  }
+  stationsLoading.value = false
+})
+
 async function onSearch() {
   selectedIdx.value = null
   store.clearReserveResult()
   searched.value = true
+  store.error = ''  // Clear previous errors
   await store.search({
     dep: dep.value, arr: arr.value,
     date: depDate.value.replace(/-/g, ''),
@@ -41,12 +56,12 @@ async function onReserve() {
 }
 
 const trainTypes = [
+  { value: 'all', label: '전체' },
   { value: 'ktx', label: 'KTX' },
   { value: 'ktx-sancheon', label: 'KTX-산천' },
   { value: 'itx-cheongchun', label: 'ITX-청춘' },
   { value: 'itx-saemaeul', label: 'ITX-새마을' },
   { value: 'mugunghwa', label: '무궁화호' },
-  { value: 'all', label: '전체' },
 ]
 
 const seatOptions = [
@@ -55,6 +70,12 @@ const seatOptions = [
   { value: 'special-first', label: '특실 우선' },
   { value: 'special-only', label: '특실만' },
 ]
+
+function swapStation() {
+  const tmp = dep.value
+  dep.value = arr.value
+  arr.value = tmp
+}
 </script>
 
 <template>
@@ -62,35 +83,56 @@ const seatOptions = [
     <!-- Search Form -->
     <div class="bg-surface-elevated rounded-xl border border-border p-5 mb-5">
       <h2 class="text-text font-semibold mb-4">🔍 열차 조회</h2>
-      <div class="grid grid-cols-4 gap-3 mb-3">
+
+      <div class="grid grid-cols-5 gap-3 mb-3 items-end">
         <div>
           <label class="block text-text-muted text-xs mb-1">출발역</label>
-          <input v-model="dep" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          <div class="flex gap-1">
+            <input v-model="dep" list="stations-dep" placeholder="서울"
+              class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+            <datalist id="stations-dep">
+              <option v-for="s in stations" :key="s.code" :value="s.name" />
+            </datalist>
+          </div>
+        </div>
+        <div class="text-center pt-5">
+          <button class="text-text-dim hover:text-text cursor-pointer text-lg" @click="swapStation" title="출발/도착 변경">⇄</button>
         </div>
         <div>
           <label class="block text-text-muted text-xs mb-1">도착역</label>
-          <input v-model="arr" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          <input v-model="arr" list="stations-arr" placeholder="부산"
+            class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          <datalist id="stations-arr">
+            <option v-for="s in stations" :key="s.code" :value="s.name" />
+          </datalist>
         </div>
         <div>
           <label class="block text-text-muted text-xs mb-1">출발일</label>
-          <input v-model="depDate" type="date" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          <input v-model="depDate" type="date"
+            class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
         </div>
         <div>
-          <label class="block text-text-muted text-xs mb-1">시각 이후</label>
-          <input v-model="depTime" type="time" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          <label class="block text-text-muted text-xs mb-1">출발 시각</label>
+          <input v-model="depTime" type="time"
+            class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
         </div>
       </div>
+
       <div class="flex items-center gap-4 mb-4">
-        <select v-model="trainType" class="bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+        <select v-model="trainType"
+          class="bg-surface border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:ring-2 focus:ring-brand">
           <option v-for="t in trainTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
         </select>
         <label class="flex items-center gap-1.5 text-text-muted text-xs cursor-pointer">
-          <input v-model="includeNoSeats" type="checkbox" class="accent-brand" /> 매진 열차 포함
+          <input v-model="includeNoSeats" type="checkbox" class="accent-brand" /> 매진 포함
         </label>
         <label class="flex items-center gap-1.5 text-text-muted text-xs cursor-pointer">
-          <input v-model="includeWaiting" type="checkbox" class="accent-brand" /> 예약대기 포함
+          <input v-model="includeWaiting" type="checkbox" class="accent-brand" /> 예약대기
         </label>
+        <span v-if="stationsLoading" class="text-text-dim text-xs">역 정보 로딩 중...</span>
+        <span v-else class="text-text-dim text-xs">{{ stations.length }}개 역</span>
       </div>
+
       <button
         class="bg-brand text-black font-semibold rounded-lg px-6 py-2 text-sm hover:bg-brand-hover transition-colors disabled:opacity-50 cursor-pointer"
         :disabled="store.loading"
@@ -129,7 +171,7 @@ const seatOptions = [
     </div>
 
     <!-- No results -->
-    <div v-else-if="searched" class="bg-surface-elevated rounded-xl border border-border p-8 text-center mb-5">
+    <div v-else-if="searched && !store.loading" class="bg-surface-elevated rounded-xl border border-border p-8 text-center mb-5">
       <p class="text-text-muted text-sm">{{ store.message || '검색 결과가 없습니다' }}</p>
     </div>
 
@@ -143,7 +185,7 @@ const seatOptions = [
         </label>
       </div>
       <label class="flex items-center gap-1.5 text-text-muted text-sm cursor-pointer mb-4">
-        <input v-model="tryWaiting" type="checkbox" class="accent-brand" /> 매진 시 예약대기 신청
+        <input v-model="tryWaiting" type="checkbox" class="accent-brand" /> 매진 시 예약대기
       </label>
       <button
         class="bg-brand text-black font-semibold rounded-lg px-6 py-2 text-sm hover:bg-brand-hover transition-colors disabled:opacity-50 cursor-pointer"
