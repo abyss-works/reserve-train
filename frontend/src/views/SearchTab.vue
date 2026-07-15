@@ -137,66 +137,60 @@ function onHourUpdate(h: number) {
 <template>
   <div class="pa-4" style="max-width: 900px; margin: 0 auto;">
     <v-card class="mb-4">
-      <v-card-title class="d-flex align-center ga-2">
+      <v-card-title class="d-flex align-center ga-2 text-body-1 font-weight-bold pa-4 pb-0">
         <Search :size="18" />
         <span>열차 조회</span>
         <v-spacer />
-        <span class="text-caption text-medium-emphasis">{{ stations.length }}개역</span>
+        <span class="text-caption text-medium-emphasis font-weight-regular">{{ stations.length }}개역</span>
       </v-card-title>
-      <v-divider />
 
       <v-card-text class="pt-4">
         <v-row dense>
-          <v-col cols="5">
+          <v-col cols="12" md="5">
             <v-combobox v-model="dep" :items="stations.map(s => s.name)" label="출발역" variant="outlined" density="compact" hide-details />
           </v-col>
-          <v-col cols="2" class="d-flex align-center justify-center">
+          <v-col cols="12" md="2" class="d-flex align-center justify-center py-md-0" style="min-height: 40px;">
             <v-btn icon variant="text" size="small" color="grey" tabindex="-1" @click="swapStation">
               <ArrowLeftRight :size="18" />
             </v-btn>
           </v-col>
-          <v-col cols="5">
+          <v-col cols="12" md="5">
             <v-combobox v-model="arr" :items="stations.map(s => s.name)" label="도착역" variant="outlined" density="compact" hide-details />
           </v-col>
         </v-row>
 
         <v-row dense class="mt-2">
-          <v-col cols="4">
+          <v-col cols="6" md="4">
             <v-menu v-model="dateMenu" :close-on-content-click="false">
               <template #activator="{ props }">
                 <v-text-field v-bind="props" :model-value="dateStr" label="출발일" variant="outlined" density="compact" hide-details readonly>
-                  <template #prepend-inner>
-                    <CalendarDays :size="16" style="margin-top: -2px;" />
-                  </template>
+                  <template #prepend-inner><CalendarDays :size="16" /></template>
                 </v-text-field>
               </template>
               <v-date-picker :model-value="depDate" @update:model-value="onDateUpdate" />
             </v-menu>
           </v-col>
-          <v-col cols="3">
+          <v-col cols="6" md="3">
             <v-select v-model="selectedHour" :items="hours" label="출발 시각" variant="outlined" density="compact" hide-details @update:model-value="onHourUpdate($event)">
-              <template #prepend-inner>
-                <Clock :size="16" style="margin-top: -2px;" />
-              </template>
+              <template #prepend-inner><Clock :size="16" /></template>
             </v-select>
           </v-col>
-          <v-col cols="3">
+          <v-col cols="6" md="3">
             <v-select v-model="trainType" :items="trainTypes" item-title="label" item-value="value" label="열차 종류" variant="outlined" density="compact" hide-details />
           </v-col>
-          <v-col cols="2" class="d-flex align-center ga-2">
+          <v-col cols="6" md="2" class="d-flex align-center ga-1">
             <v-checkbox v-model="includeNoSeats" label="매진" hide-details density="compact" />
             <v-checkbox v-model="includeWaiting" label="대기" hide-details density="compact" />
           </v-col>
         </v-row>
       </v-card-text>
 
-      <v-card-actions class="px-4 pb-4">
-        <v-btn color="primary" variant="flat" size="large" :loading="store.loading" @click="onSearch">
+      <v-card-actions class="d-flex flex-column flex-sm-row pa-4 pt-0 ga-2">
+        <v-btn color="primary" variant="flat" size="large" :loading="store.loading" class="w-100 w-sm-auto" @click="onSearch">
           <template #prepend><Search :size="18" /></template>
           조회
         </v-btn>
-        <v-spacer />
-        <v-btn v-if="searched && store.trains.length > 0" variant="text" color="grey" size="small" @click="selectedIdx = null">선택 해제</v-btn>
+        <v-btn v-if="searched && store.trains.length > 0" variant="text" color="grey" size="small" class="w-100 w-sm-auto" @click="selectedIdx = null">선택 해제</v-btn>
       </v-card-actions>
     </v-card>
 
@@ -204,15 +198,15 @@ function onHourUpdate(h: number) {
     <v-alert v-if="monMsg" type="success" variant="tonal" class="mb-3" density="compact">{{ monMsg }}</v-alert>
 
     <v-row v-if="store.loading" dense>
-      <v-col v-for="i in 4" :key="i" cols="6">
-        <v-skeleton-loader type="card" />
+      <v-col v-for="i in 4" :key="i" cols="12" md="6">
+        <v-skeleton-loader type="card" class="mb-2" />
       </v-col>
     </v-row>
 
     <template v-else-if="store.trains.length > 0">
       <div class="text-caption text-medium-emphasis mb-2">{{ store.trains.length }}건 조회됨</div>
       <v-row dense>
-        <v-col v-for="t in store.trains" :key="t.idx" cols="6">
+        <v-col v-for="t in store.trains" :key="t.idx" cols="12" md="6">
           <TrainCard
             :train="t"
             :selected="selectedIdx === t.idx"
