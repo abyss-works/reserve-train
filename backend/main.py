@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from monitor import get_engine, MonitorTask
 from ktx import (
     KorailClient, AuthError, NoResults, SoldOut, NetworkError, KorailClientError,
 )
@@ -56,6 +57,19 @@ class CancelRequest(BaseModel):
     reservation_idx: int = 0
 
 
+class MonitorStartRequest(BaseModel):
+    dep: str
+    arr: str
+    date: str
+    time: str
+    train_type: str = "ktx"
+    train_idx: int = 0
+    train_no: str = ""
+    train_label: str = ""
+    seat_option: str = "general-first"
+    try_waiting: bool = False
+
+
 # ─── 애플리케이션 ────────────────────────────────────────
 
 static_dir = Path(__file__).resolve().parent / "frontend" / "dist"
@@ -72,10 +86,18 @@ app = FastAPI(title="KTX 예매 도우미", version="0.1.0", lifespan=lifespan)
 # ─── API 라우트 ──────────────────────────────────────────
 
 
+class _MonClient(KorailClient):
+    """로그인 시 korail_id/pw를 보관하는 클라이언트"""
+    def __init__(self):
+        super().__init__()
+        self.stored_id = ""
+        self.stored_pw = ""
+
+
 @app.post("/api/v1/login")
 def login(req: LoginRequest):
     """Korail 로그인"""
-    client = KorailClient()
+    client = _MonClient()
     try:
         name = client.login(req.id, req.password)
     except AuthError as e:
@@ -85,6 +107,8 @@ def login(req: LoginRequest):
     except KorailClientError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    client.stored_id = req.id
+    client.stored_pw = req.password
     session_id = uuid.uuid4().hex
     _sessions[session_id] = client
     return {"session_id": session_id, "name": name}
@@ -280,6 +304,62 @@ def cancel_reservation(req: CancelRequest, session_id: str = ""):
         raise HTTPException(status_code=503, detail=str(e))
 
     return {"success": True}
+
+
+# ─── 자동 예매 모니터링 ──────────────────────────────
+
+
+@app.post("/api/v1/monitor/start")
+def monitor_start(req: MonitorStartRequest, session_id: str = ""):
+    """자동 예매 시작"""
+    client = _get_client(session_id)
+    if not hasattr(client, 'stored_id') or not client.stored_id:
+        raise HTTPException(status_code=400, detail="재로그인이 필요합니다")
+
+    task = MonitorTask(
+        task_id=uuid.uuid4().hex,
+        session_id=session_id,
+        korail_id=client.stored_id,
+        korail_pw=client.stored_pw,
+        dep=req.dep, arr=req.arr, date=req.date, time=req.time,
+        train_type=req.train_type, train_idx=req.train_idx,
+        train_no=req.train_no, train_label=req.train_label,
+        seat_option=req.seat_option, try_waiting=req.try_waiting,
+    )
+    engine = get_engine()
+    task_id = engine.add_task(task)
+    return {"task_id": task_id}
+
+
+@app.post("/api/v1/monitor/stop")
+def monitor_stop(task_id: str = "", session_id: str = ""):
+    """자동 예매 중지"""
+    engine = get_engine()
+    engine.remove_task(task_id)
+    return {"success": True}
+
+
+@app.get("/api/v1/monitor/list")
+def monitor_list(session_id: str = ""):
+    """내 자동 예매 현황"""
+    _get_client(session_id)  # 세션 유효성 확인
+    engine = get_engine()
+    tasks = engine.get_tasks_by_session(session_id)
+    return {
+        "monitors": [
+            {
+                "task_id": t.task_id,
+                "dep": t.dep, "arr": t.arr,
+                "train_label": t.train_label,
+                "train_no": t.train_no,
+                "status": t.status,
+                "check_count": t.check_count,
+                "error_msg": t.error_msg,
+                "result": t.result,
+            }
+            for t in tasks
+        ]
+    }
 
 
 # ─── search/reserve 연동: search 결과를 세션에 저장 ──────

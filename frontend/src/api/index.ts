@@ -95,3 +95,33 @@ export async function getStations(): Promise<ApiResult<StationsResult>> {
 export async function verifySession(sessionId: string): Promise<ApiResult<{ valid: boolean; name: string }>> {
   return apiCall<{ valid: boolean; name: string }>(`/api/v1/verify?session_id=${sessionId}`)
 }
+
+export async function startMonitor(params: {
+  dep: string; arr: string; date: string; time: string
+  train_type: string; train_idx: number; train_no: string; train_label: string
+  seat_option: string; try_waiting: boolean
+}): Promise<ApiResult<{ task_id: string }>> {
+  return apiCall<{ task_id: string }>(`/api/v1/monitor/start?session_id=${getSessionId()}`, {
+    method: 'POST', body: JSON.stringify(params),
+  })
+}
+
+export async function stopMonitor(taskId: string): Promise<ApiResult<{ success: boolean }>> {
+  return apiCall<{ success: boolean }>(`/api/v1/monitor/stop?task_id=${taskId}&session_id=${getSessionId()}`, {
+    method: 'POST',
+  })
+}
+
+export interface MonitorEntry {
+  task_id: string
+  dep: string; arr: string
+  train_label: string; train_no: string
+  status: string
+  check_count: number
+  error_msg: string
+  result: any
+}
+
+export async function listMonitors(): Promise<ApiResult<{ monitors: MonitorEntry[] }>> {
+  return apiCall<{ monitors: MonitorEntry[] }>(`/api/v1/monitor/list?session_id=${getSessionId()}`)
+}
