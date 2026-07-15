@@ -70,10 +70,10 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
           <div class="text-caption text-medium-emphasis mb-1">{{ m.dep }} → {{ m.arr }}</div>
 
           <template v-if="m.status === 'monitoring'">
-            <div class="d-flex align-center ga-2 mb-2">
+            <div class="d-flex align-center ga-2 mb-2 flex-wrap">
               <LoaderCircle :size="14" class="text-primary" />
               <span class="text-caption text-medium-emphasis">{{ m.check_count }}회 확인</span>
-              <span class="text-caption text-disabled">| {{ m.interval_sec }}초 간격</span>
+              <v-chip size="x-small" variant="tonal" label class="text-caption">{{ m.interval_sec }}초 간격</v-chip>
             </div>
             <v-btn variant="text" color="grey" size="x-small" class="mt-1" @click="onStop(m.task_id)">중지</v-btn>
           </template>

@@ -46,6 +46,9 @@ const tryWaiting = ref(true)
 const searched = ref(false)
 const monMsg = ref('')
 const dateMenu = ref(false)
+const monInterval = ref(30)
+const monDialog = ref(false)
+const monTargetTrain = ref<Train | null>(null)
 
 const trainTypes = [
   { value: 'all', label: '전체' },
@@ -101,6 +104,15 @@ function swapStation() {
 }
 
 async function onAutoMonitor(train: Train) {
+  monTargetTrain.value = train
+  monInterval.value = 30
+  monDialog.value = true
+}
+
+async function confirmMonitor() {
+  if (!monTargetTrain.value) return
+  monDialog.value = false
+  const train = monTargetTrain.value
   monMsg.value = ''
   const res = await startMonitor({
     dep: dep.value, arr: arr.value,
@@ -111,7 +123,7 @@ async function onAutoMonitor(train: Train) {
     train_label: `${train.train_type} ${train.train_no}`,
     seat_option: seatOption.value,
     try_waiting: tryWaiting.value,
-    interval_sec: 30,
+    interval_sec: monInterval.value,
   })
   monMsg.value = res.data ? '자동 예매가 시작되었습니다' : (res.error || '실패')
   setTimeout(() => { monMsg.value = '' }, 4000)
@@ -274,4 +286,37 @@ function onHourUpdate(h: number) {
       </v-card-actions>
     </v-card>
   </div>
+
+  <!-- 자동 예매 설정 다이얼로그 -->
+  <v-dialog v-model="monDialog" max-width="400">
+    <v-card>
+      <v-card-title class="d-flex align-center ga-2">
+        <Clock :size="18" />
+        자동 예매 설정
+      </v-card-title>
+      <v-card-text v-if="monTargetTrain">
+        <div class="text-body-2 mb-3">
+          {{ monTargetTrain.train_type }} {{ monTargetTrain.train_no }}<br>
+          <span class="text-medium-emphasis">{{ monTargetTrain.dep_name }} → {{ monTargetTrain.arr_name }}</span>
+        </div>
+        <v-select
+          v-model="monInterval"
+          :items="[10, 15, 20, 30, 45, 60, 90, 120]"
+          label="요청 주기 (초)"
+          hint="코레일 서버 부하를 고려하여 10초 이상 권장"
+          persistent-hint
+          variant="outlined"
+          density="compact"
+        />
+      </v-card-text>
+      <v-card-actions>
+        <v-btn variant="text" @click="monDialog = false">취소</v-btn>
+        <v-spacer />
+        <v-btn color="primary" variant="flat" @click="confirmMonitor">
+          <template #prepend><Clock :size="16" /></template>
+          자동 예매 시작
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
