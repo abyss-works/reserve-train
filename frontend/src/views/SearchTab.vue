@@ -79,6 +79,7 @@ async function onReserve() {
 
 function swapStation() {
   [dep.value, arr.value] = [arr.value, dep.value]
+  ;[depInput.value, arrInput.value] = [arrInput.value, depInput.value]
 }
 
 function selectDepStation(name: string) {

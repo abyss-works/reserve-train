@@ -97,6 +97,15 @@ def logout(session_id: str = ""):
     return {"success": True}
 
 
+@app.get("/api/v1/verify")
+def verify_session(session_id: str = ""):
+    """세션 유효성 확인"""
+    client = _sessions.get(session_id)
+    if client is None:
+        raise HTTPException(status_code=401, detail="세션이 만료되었습니다")
+    return {"valid": True, "name": client.user_name}
+
+
 @app.get("/api/v1/stations")
 def get_stations():
     """코레일 역 목록 조회"""

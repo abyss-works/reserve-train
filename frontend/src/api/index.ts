@@ -91,3 +91,7 @@ export async function cancelReservation(reservationIdx: number): Promise<ApiResu
 export async function getStations(): Promise<ApiResult<StationsResult>> {
   return apiCall<StationsResult>('/api/v1/stations')
 }
+
+export async function verifySession(sessionId: string): Promise<ApiResult<{ valid: boolean; name: string }>> {
+  return apiCall<{ valid: boolean; name: string }>(`/api/v1/verify?session_id=${sessionId}`)
+}

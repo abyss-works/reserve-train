@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { login as apiLogin, logout as apiLogout, getSessionId, clearSession } from '@/api'
+import { login as apiLogin, logout as apiLogout, getSessionId, clearSession, verifySession } from '@/api'
 
 export const useAuthStore = defineStore('auth', () => {
   const loggedIn = ref(false)
@@ -38,11 +37,23 @@ export const useAuthStore = defineStore('auth', () => {
     sessionId.value = ''
   }
 
-  function restore() {
+  async function restore() {
     const sid = getSessionId()
-    if (sid) {
+    if (!sid) {
+      loggedIn.value = false
+      return
+    }
+    // 서버에 세션 유효성 확인
+    const res = await verifySession(sid)
+    if (res.data && res.data.valid) {
       sessionId.value = sid
+      userName.value = res.data.name || ''
       loggedIn.value = true
+    } else {
+      clearSession()
+      loggedIn.value = false
+      userName.value = ''
+      sessionId.value = ''
     }
   }
 
