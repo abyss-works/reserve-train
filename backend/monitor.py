@@ -1,49 +1,61 @@
 """
-monitor.py — 취소표 자동 예매 모니터링 엔진
+monitor.py — 취소표 자동 예매 모니터링 엔진 (DB 기반)
 
-30초 간격으로 지정된 열차를 재조회하여 좌석 발생 시 자동 예약.
+DB에 저장된 태스크를 10초 간격으로 스캔하여
+각 태스크의 interval_sec마다 재조회 → 좌석 발생 시 자동 예약.
 """
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Optional
 
 from ktx import KorailClient, KorailClientError, AuthError, SoldOut
+from db import (
+    create_task as db_create_task,
+    get_active_tasks,
+    update_task_status,
+    delete_task as db_delete_task,
+    get_tasks_by_session,
+    get_task,
+    get_logs,
+    add_log,
+    init_pool,
+)
 
 
-@dataclass
-class MonitorTask:
-    task_id: str
-    session_id: str
-    korail_id: str
-    korail_pw: str
-    dep: str
-    arr: str
-    date: str
-    time: str
-    train_type: str
-    train_idx: int
-    train_no: str
-    train_label: str
-    seat_option: str = "general-first"
-    try_waiting: bool = False
-    status: str = "monitoring"  # monitoring | reserved | failed | stopped
-    check_count: int = 0
-    error_msg: str = ""
-    result: dict = field(default_factory=dict)
+def start_task(task_data: dict) -> str:
+    task_id = uuid.uuid4().hex
+    task_data["task_id"] = task_id
+    task_data["interval_sec"] = task_data.get("interval_sec", 30)
+    db_create_task(task_data)
+    add_log(task_id, "info", "자동 예매가 등록되었습니다")
+    return task_id
+
+
+def stop_task(task_id: str):
+    t = get_task(task_id)
+    if t:
+        update_task_status(task_id, status="stopped", error_msg="사용자 중지")
+        add_log(task_id, "info", "사용자가 자동 예매를 중지했습니다")
+
+
+def list_tasks(session_id: str) -> list[dict]:
+    return get_tasks_by_session(session_id)
+
+
+def list_logs(task_id: str, limit: int = 50) -> list[dict]:
+    return get_logs(task_id, limit)
+
+
+# ─── 엔진 ────────────────────────────────────────
 
 
 class MonitorEngine:
-    """백그라운드 모니터링 엔진 (싱글 스레드, 30초 간격)"""
-
     def __init__(self):
-        self._tasks: dict[str, MonitorTask] = {}
-        self._lock = threading.Lock()
         self._running = False
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
 
     def start(self):
+        init_pool()
         if self._running:
             return
         self._running = True
@@ -53,106 +65,112 @@ class MonitorEngine:
     def stop(self):
         self._running = False
 
-    def add_task(self, task: MonitorTask) -> str:
-        with self._lock:
-            self._tasks[task.task_id] = task
-        if not self._running:
-            self.start()
-        return task.task_id
-
-    def remove_task(self, task_id: str) -> bool:
-        with self._lock:
-            t = self._tasks.pop(task_id, None)
-            if t:
-                t.status = "stopped"
-            return t is not None
-
-    def get_task(self, task_id: str) -> Optional[MonitorTask]:
-        with self._lock:
-            return self._tasks.get(task_id)
-
-    def get_tasks(self) -> list[MonitorTask]:
-        with self._lock:
-            return list(self._tasks.values())
-
-    def get_tasks_by_session(self, session_id: str) -> list[MonitorTask]:
-        with self._lock:
-            return [t for t in self._tasks.values() if t.session_id == session_id]
-
     def _loop(self):
+        """10초 간격으로 DB에서 active 태스크를 읽어 체크"""
         while self._running:
-            tasks = self.get_tasks()
-            for task in tasks:
-                if task.status != "monitoring":
-                    continue
-                try:
-                    self._check(task)
-                except Exception:
-                    pass
-            time.sleep(30)
+            try:
+                tasks = get_active_tasks()
+                now = time.time()
+                for t in tasks:
+                    task_id = t["task_id"]
+                    interval = t.get("interval_sec", 30)
 
-    def _check(self, task: MonitorTask):
-        """단일 태스크 체크"""
+                    # interval 체크: updated_at 기준 interval 경과 확인
+                    updated = t["updated_at"]
+                    if updated:
+                        elapsed = now - updated.timestamp()
+                        if elapsed < interval:
+                            continue
+
+                    try:
+                        self._check(t)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            time.sleep(10)
+
+    def _check(self, task: dict):
+        task_id = task["task_id"]
+
         client = KorailClient()
         try:
-            client.login(task.korail_id, task.korail_pw)
+            client.login(task["korail_id"], task["korail_pw"])
         except (AuthError, KorailClientError) as e:
-            with self._lock:
-                task.check_count += 1
-                task.error_msg = f"로그인 실패: {e}"
+            add_log(task_id, "error", f"로그인 실패: {e}")
+            update_task_status(task_id, check_count=task["check_count"] + 1, error_msg=str(e))
+            # 로그인 실패 시 10분 후 재시도 (interval 유지)
             return
 
         try:
             trains = client.search(
-                dep=task.dep, arr=task.arr,
-                date=task.date, time=task.time,
-                train_type=task.train_type,
+                dep=task["dep"], arr=task["arr"],
+                date=task["date"], time=task["time"],
+                train_type=task["train_type"],
                 include_no_seats=True,
             )
         except (AuthError, KorailClientError) as e:
-            with self._lock:
-                task.check_count += 1
-                task.error_msg = f"조회 실패: {e}"
+            add_log(task_id, "error", f"조회 실패: {e}")
+            update_task_status(task_id, check_count=task["check_count"] + 1, error_msg=str(e))
             return
 
-        with self._lock:
-            task.check_count += 1
-
-        # 대상 열차 찾기
+        # 대상 열차 찾기 (general_available 우선)
         target = None
         for t in trains:
-            if t.train_no == task.train_no and t.general_available:
+            if t.train_no == task["train_no"] and t.general_available:
                 target = t
                 break
 
         if target is None:
-            return  # 아직 좌석 없음
+            # 좌석 없음 → count만 올리고 로그 없이 대기
+            update_task_status(task_id, check_count=task["check_count"] + 1, error_msg="")
+            # 주기적 상태 알림 (50회마다)
+            if (task["check_count"] + 1) % 50 == 0:
+                add_log(task_id, "info", f"{task['check_count'] + 1}회 확인 중... 계속 모니터링 중")
+            return
 
         # 좌석 생김 → 예약 시도
         try:
-            rsv = client.reserve(target, seat_option=task.seat_option, try_waiting=task.try_waiting)
-            with self._lock:
-                task.status = "reserved"
-                task.result = {
-                    "rsv_id": rsv.rsv_id,
-                    "train_type": rsv.train_type,
-                    "train_no": rsv.train_no,
-                    "dep_name": rsv.dep_name,
-                    "dep_display": rsv.dep_display,
-                    "arr_name": rsv.arr_name,
-                    "arr_display": rsv.arr_display,
-                    "price": rsv.price,
-                    "seat_count": rsv.seat_count,
-                    "limit_display": rsv.limit_display,
-                }
+            rsv = client.reserve(
+                target,
+                seat_option=task["seat_option"],
+                try_waiting=task["try_waiting"],
+            )
         except (SoldOut, AuthError, KorailClientError) as e:
-            with self._lock:
-                task.error_msg = f"예약 실패: {e}"
+            add_log(task_id, "error", f"예약 실패: {e}")
+            update_task_status(
+                task_id,
+                check_count=task["check_count"] + 1,
+                error_msg=f"예약 실패: {e}",
+            )
+            # 실패해도 계속 모니터링 (retry)
+            return
+
+        # 예약 성공
+        result_data = {
+            "rsv_id": rsv.rsv_id,
+            "train_type": rsv.train_type,
+            "train_no": rsv.train_no,
+            "dep_name": rsv.dep_name,
+            "dep_display": rsv.dep_display,
+            "arr_name": rsv.arr_name,
+            "arr_display": rsv.arr_display,
+            "price": rsv.price,
+            "seat_count": rsv.seat_count,
+            "limit_display": rsv.limit_display,
+        }
+        update_task_status(
+            task_id,
+            status="reserved",
+            check_count=task["check_count"] + 1,
+            result=result_data,
+            error_msg="",
+        )
+        add_log(task_id, "success", f"예약 성공! {rsv.rsv_id} ({rsv.price}원)")
 
 
 # 싱글톤
 _engine = MonitorEngine()
-_engine.start()
 
 
 def get_engine() -> MonitorEngine:

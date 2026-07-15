@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from monitor import get_engine, MonitorTask
+from monitor import get_engine, start_task, stop_task, list_tasks, list_logs
 from ktx import (
     KorailClient, AuthError, NoResults, SoldOut, NetworkError, KorailClientError,
 )
@@ -68,6 +68,7 @@ class MonitorStartRequest(BaseModel):
     train_label: str = ""
     seat_option: str = "general-first"
     try_waiting: bool = False
+    interval_sec: int = 30
 
 
 # ─── 애플리케이션 ────────────────────────────────────────
@@ -316,50 +317,64 @@ def monitor_start(req: MonitorStartRequest, session_id: str = ""):
     if not hasattr(client, 'stored_id') or not client.stored_id:
         raise HTTPException(status_code=400, detail="재로그인이 필요합니다")
 
-    task = MonitorTask(
-        task_id=uuid.uuid4().hex,
-        session_id=session_id,
-        korail_id=client.stored_id,
-        korail_pw=client.stored_pw,
-        dep=req.dep, arr=req.arr, date=req.date, time=req.time,
-        train_type=req.train_type, train_idx=req.train_idx,
-        train_no=req.train_no, train_label=req.train_label,
-        seat_option=req.seat_option, try_waiting=req.try_waiting,
-    )
-    engine = get_engine()
-    task_id = engine.add_task(task)
+    if req.interval_sec < 10:
+        raise HTTPException(status_code=400, detail="요청 주기는 최소 10초 이상이어야 합니다")
+
+    task_data = {
+        "session_id": session_id,
+        "korail_id": client.stored_id,
+        "korail_pw": client.stored_pw,
+        "dep": req.dep, "arr": req.arr,
+        "date": req.date, "time": req.time,
+        "train_type": req.train_type,
+        "train_no": req.train_no,
+        "train_label": req.train_label,
+        "seat_option": req.seat_option,
+        "try_waiting": req.try_waiting,
+        "interval_sec": req.interval_sec,
+    }
+    task_id = start_task(task_data)
     return {"task_id": task_id}
 
 
 @app.post("/api/v1/monitor/stop")
 def monitor_stop(task_id: str = "", session_id: str = ""):
     """자동 예매 중지"""
-    engine = get_engine()
-    engine.remove_task(task_id)
+    _get_client(session_id)
+    stop_task(task_id)
     return {"success": True}
 
 
 @app.get("/api/v1/monitor/list")
 def monitor_list(session_id: str = ""):
     """내 자동 예매 현황"""
-    _get_client(session_id)  # 세션 유효성 확인
-    engine = get_engine()
-    tasks = engine.get_tasks_by_session(session_id)
+    _get_client(session_id)
+    tasks = list_tasks(session_id)
     return {
         "monitors": [
             {
-                "task_id": t.task_id,
-                "dep": t.dep, "arr": t.arr,
-                "train_label": t.train_label,
-                "train_no": t.train_no,
-                "status": t.status,
-                "check_count": t.check_count,
-                "error_msg": t.error_msg,
-                "result": t.result,
+                "task_id": t["task_id"],
+                "dep": t["dep"], "arr": t["arr"],
+                "train_label": t["train_label"],
+                "train_no": t["train_no"],
+                "status": t["status"],
+                "check_count": t["check_count"],
+                "error_msg": t.get("error_msg", ""),
+                "interval_sec": t.get("interval_sec", 30),
+                "result": t.get("result", {}),
+                "created_at": str(t.get("created_at", "")),
             }
             for t in tasks
         ]
     }
+
+
+@app.get("/api/v1/monitor/logs")
+def monitor_logs(task_id: str = "", session_id: str = ""):
+    """자동 예매 시도 로그"""
+    _get_client(session_id)
+    logs = list_logs(task_id)
+    return {"logs": logs}
 
 
 # ─── search/reserve 연동: search 결과를 세션에 저장 ──────

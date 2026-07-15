@@ -111,6 +111,7 @@ async function onAutoMonitor(train: Train) {
     train_label: `${train.train_type} ${train.train_no}`,
     seat_option: seatOption.value,
     try_waiting: tryWaiting.value,
+    interval_sec: 30,
   })
   monMsg.value = res.data ? '자동 예매가 시작되었습니다' : (res.error || '실패')
   setTimeout(() => { monMsg.value = '' }, 4000)

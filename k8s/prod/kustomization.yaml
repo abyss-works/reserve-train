@@ -10,7 +10,8 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - postgres.yaml
 images:
 - name: reserve-train
   newName: registry.abyssworks.dev/reserve-train
-  newTag: v22
+  newTag: v23

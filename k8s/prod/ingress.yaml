@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: reserve-train
+  name: ktx-reserve
   namespace: reserve-train-prod
   labels:
     project: reserve-train

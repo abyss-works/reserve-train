@@ -99,7 +99,7 @@ export async function verifySession(sessionId: string): Promise<ApiResult<{ vali
 export async function startMonitor(params: {
   dep: string; arr: string; date: string; time: string
   train_type: string; train_idx: number; train_no: string; train_label: string
-  seat_option: string; try_waiting: boolean
+  seat_option: string; try_waiting: boolean; interval_sec: number
 }): Promise<ApiResult<{ task_id: string }>> {
   return apiCall<{ task_id: string }>(`/api/v1/monitor/start?session_id=${getSessionId()}`, {
     method: 'POST', body: JSON.stringify(params),
@@ -119,9 +119,22 @@ export interface MonitorEntry {
   status: string
   check_count: number
   error_msg: string
+  interval_sec: number
   result: any
+  created_at: string
+}
+
+export interface LogEntry {
+  id: number
+  level: string
+  message: string
+  created_at: string
 }
 
 export async function listMonitors(): Promise<ApiResult<{ monitors: MonitorEntry[] }>> {
   return apiCall<{ monitors: MonitorEntry[] }>(`/api/v1/monitor/list?session_id=${getSessionId()}`)
+}
+
+export async function getMonitorLogs(taskId: string): Promise<ApiResult<{ logs: LogEntry[] }>> {
+  return apiCall<{ logs: LogEntry[] }>(`/api/v1/monitor/logs?task_id=${taskId}&session_id=${getSessionId()}`)
 }
