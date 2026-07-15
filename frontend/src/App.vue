@@ -4,10 +4,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useTrainStore } from '@/stores/train'
 import SearchTab from '@/views/SearchTab.vue'
 import ReservationsTab from '@/views/ReservationsTab.vue'
+import MonitorTab from '@/views/MonitorTab.vue'
 
 const auth = useAuthStore()
 const store = useTrainStore()
-const activeTab = ref<'search' | 'reservations'>('search')
+const activeTab = ref<'search' | 'reservations' | 'monitor'>('search')
 
 const korailId = ref('')
 const korailPw = ref('')
@@ -34,7 +35,7 @@ function onLogout() {
   store.clearAll()
 }
 
-function setTab(tab: 'search' | 'reservations') {
+function setTab(tab: 'search' | 'reservations' | 'monitor') {
   activeTab.value = tab
   if (tab === 'reservations') {
     store.loadReservations()
@@ -122,6 +123,17 @@ function setTab(tab: 'search' | 'reservations') {
         >
           📋 예약 내역
         </button>
+        <button
+          :class="[
+            'w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer',
+            activeTab === 'monitor'
+              ? 'bg-brand/10 text-brand'
+              : 'text-text-muted hover:bg-surface-elevated hover:text-text'
+          ]"
+          @click="setTab('monitor')"
+        >
+          📡 자동 예매
+        </button>
       </nav>
 
       <div class="p-5 border-t border-border">
@@ -136,6 +148,9 @@ function setTab(tab: 'search' | 'reservations') {
 
       <!-- Reservations Tab -->
       <ReservationsTab v-else-if="activeTab === 'reservations'" />
+
+      <!-- Monitor Tab -->
+      <MonitorTab v-else-if="activeTab === 'monitor'" />
     </main>
   </div>
 </template>

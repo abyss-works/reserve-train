@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useTrainStore } from '@/stores/train'
-import { getStations } from '@/api'
+import { getStations, startMonitor } from '@/api'
 import type { Station, Train } from '@/types'
 import TrainCard from '@/components/TrainCard.vue'
+import DateTimePicker from '@/components/DateTimePicker.vue'
 
 const store = useTrainStore()
 
@@ -104,6 +105,29 @@ function onArrInput(e: Event) {
   const v = (e.target as HTMLInputElement).value
   arr.value = v
   arrInput.value = v
+}
+
+const monMsg = ref('')
+
+async function onAutoMonitor(train: Train) {
+  monMsg.value = ''
+  const res = await startMonitor({
+    dep: dep.value, arr: arr.value,
+    date: depDate.value.replace(/-/g, ''),
+    time: depTime.value.replace(/:/g, '') + '00',
+    train_type: trainType.value,
+    train_idx: train.idx,
+    train_no: train.train_no,
+    train_label: `${train.train_type} ${train.train_no}`,
+    seat_option: seatOption.value,
+    try_waiting: tryWaiting.value,
+  })
+  if (res.data) {
+    monMsg.value = '🔁 자동 예매가 시작되었습니다'
+  } else {
+    monMsg.value = res.error || '자동 예매 시작 실패'
+  }
+  setTimeout(() => { monMsg.value = '' }, 5000)
 }
 
 function onBlurDep() {
@@ -214,18 +238,13 @@ const selectedTrain = computed<Train | null>(() =>
 
         <!-- 날짜/시간/열차종류 -->
         <div class="grid grid-cols-4 gap-3">
-          <div>
-            <label class="block text-text-muted text-[11px] mb-1.5 font-medium">출발일</label>
-            <input
-              v-model="depDate" type="date"
-              class="w-full bg-surface border border-border rounded-lg px-3.5 py-2.5 text-text text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
-            />
-          </div>
-          <div>
-            <label class="block text-text-muted text-[11px] mb-1.5 font-medium">출발 시각</label>
-            <input
-              v-model="depTime" type="time"
-              class="w-full bg-surface border border-border rounded-lg px-3.5 py-2.5 text-text text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+          <div class="col-span-2">
+            <label class="block text-text-muted text-[11px] mb-1.5 font-medium">출발일 · 시간</label>
+            <DateTimePicker
+              :model-date="depDate"
+              :model-time="depTime"
+              @update:model-date="depDate = $event"
+              @update:model-time="depTime = $event"
             />
           </div>
           <div>
@@ -272,6 +291,11 @@ const selectedTrain = computed<Train | null>(() =>
       <p class="text-danger text-sm">{{ store.error }}</p>
     </div>
 
+    <!-- 모니터 메시지 -->
+    <div v-if="monMsg" class="mt-3 bg-brand/10 border border-brand/20 rounded-xl p-3">
+      <p class="text-brand text-sm">{{ monMsg }}</p>
+    </div>
+
     <!-- ───── 로딩 스켈레톤 ───── -->
     <div v-if="store.loading" class="mt-4 grid grid-cols-2 gap-3">
       <div v-for="i in 4" :key="i" class="bg-surface-elevated rounded-xl border border-border p-4">
@@ -294,6 +318,7 @@ const selectedTrain = computed<Train | null>(() =>
           :train="t"
           :selected="selectedIdx === t.idx"
           @select="onSelectTrain(t.idx)"
+          @auto-monitor="onAutoMonitor(t)"
         />
       </div>
     </div>
