@@ -1,66 +1,44 @@
-# AGENTS.md — reserve-train 프로젝트
+# reserve-train — KTX 예매 앱
 
-> 이 문서는 reserve-train 프로젝트의 기술 스택, 구조, 컨벤션을 정의한다.
+> board/used-book 패턴 계승: Vue 3 + FastAPI, 단일 컨테이너
 
----
-
-## 프로젝트 개요
-
-| 항목 | 내용 |
-|------|------|
-| 저장소 | `abyss-works/reserve-train` |
-| 언어 | Python 3.11 |
-| UI | Streamlit |
-| 외부 API | Korail 모바일 API (smart.letskorail.com) via korail2 |
-| 배포 | Docker → K3s 클러스터 |
-
-## 로컬 저장소 경로
-
-```
-~/abyss-works/reserve-train/
-```
-
-## 디렉토리 구조
+## 프로젝트 구조
 
 ```
 reserve-train/
-├── app.py              # Streamlit 메인 앱
-├── ktx.py              # korail2 래퍼
-├── requirements.txt    # Python 의존성
-├── Dockerfile          # 멀티스테이지 빌드
-├── k8s/prod/           # Kustomize 기반 k8s manifests
-│   ├── kustomization.yaml
-│   ├── namespace.yaml
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   └── ingress.yaml
-├── AGENTS.md           # (이 파일)
-└── README.md
+├── backend/
+│   ├── main.py          # FastAPI 앱 + 정적파일 서빙
+│   ├── api.py           # REST 엔드포인트 (/api/*)
+│   ├── ktx.py           # korail2 래퍼
+│   └── requirements.txt
+├── frontend/
+│   └── src/
+│       ├── api/         # API 호출 (fetch)
+│       ├── stores/      # Pinia stores
+│       ├── views/       # LoginView, SearchView, ReservationsView
+│       ├── components/  # NavBar, TrainCard
+│       ├── router/      # Vue Router
+│       └── types/       # TypeScript 타입
+├── k8s/prod/            # Kustomize manifests
+├── Dockerfile           # 멀티스테이지 (node → python)
+└── AGENTS.md
 ```
 
-## 빌드 & 배포
+## API
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | /api/v1/login | Korail 로그인 |
+| GET | /api/v1/search | 열차 조회 |
+| POST | /api/v1/reserve | 예약 |
+| GET | /api/v1/reservations | 예약 내역 |
+| POST | /api/v1/cancel | 취소 |
+| POST | /api/v1/logout | 로그아웃 |
+
+## 배포
 
 ```bash
-# 로컬 실행
-pip install -r requirements.txt
-streamlit run app.py
-
-# Docker 빌드
 docker build -t registry.abyssworks.dev/reserve-train:prod .
 docker push registry.abyssworks.dev/reserve-train:prod
-
-# K8s 배포
-kustomize build k8s/prod/ | kubectl apply -f -
+kubectl kustomize k8s/prod/ | kubectl apply -f -
 ```
-
-## 배포 (k8s)
-
-- K3s 클러스터 (abyssworks)
-- 네임스페이스: `reserve-train-prod`
-- Ingress: `reserve-train.abyssworks.dev`
-- TLS: *.abyssworks.dev wildcard cert (ingress-nginx)
-
-## Credential
-
-- KORAIL_ID, KORAIL_PW 환경변수 (K8s Secret)
-- 로컬 개발 시 `.env` 파일 또는 Streamlit 로그인 폼

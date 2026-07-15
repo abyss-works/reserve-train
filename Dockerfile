@@ -1,17 +1,15 @@
+FROM node:22-alpine AS frontend
+WORKDIR /frontend
+COPY frontend/package.json ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.11-slim
-
 WORKDIR /app
-
-COPY requirements.txt .
+COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-
-COPY app.py ktx.py ./
-
+COPY backend/ ./
+COPY --from=frontend /frontend/dist ./frontend/dist
 EXPOSE 8080
-
-CMD ["streamlit", "run", "app.py", \
-     "--server.port=8080", \
-     "--server.headless=true", \
-     "--server.address=0.0.0.0", \
-     "--server.enableCORS=false", \
-     "--browser.gatherUsageStats=false"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
