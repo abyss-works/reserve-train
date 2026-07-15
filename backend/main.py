@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from monitor import get_engine, start_task, stop_task, list_tasks, list_logs
+from db import get_tasks_by_korail_id
 from ktx import (
     KorailClient, AuthError, NoResults, SoldOut, NetworkError, KorailClientError,
 )
@@ -347,9 +348,17 @@ def monitor_stop(task_id: str = "", session_id: str = ""):
 
 @app.get("/api/v1/monitor/list")
 def monitor_list(session_id: str = ""):
-    """내 자동 예매 현황"""
-    _get_client(session_id)
+    """내 자동 예매 현황 (korail_id 기준으로도 조회)"""
+    client = _get_client(session_id)
+    # 현재 세션의 태스크 + 동일 korail_id의 태스크 합산
     tasks = list_tasks(session_id)
+    if hasattr(client, 'stored_id') and client.stored_id:
+        korail_tasks = get_tasks_by_korail_id(client.stored_id)
+        seen = {t["task_id"] for t in tasks}
+        for t in korail_tasks:
+            if t["task_id"] not in seen:
+                seen.add(t["task_id"])
+                tasks.append(t)
     return {
         "monitors": [
             {

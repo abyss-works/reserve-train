@@ -126,6 +126,16 @@ def get_tasks_by_session(session_id: str) -> list[dict]:
             return [dict(r) for r in cur.fetchall()]
 
 
+def get_tasks_by_korail_id(korail_id: str) -> list[dict]:
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM monitor_tasks WHERE korail_id = %s ORDER BY created_at DESC",
+                (korail_id,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+
 def get_active_tasks() -> list[dict]:
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

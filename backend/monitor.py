@@ -171,6 +171,7 @@ class MonitorEngine:
 
 # 싱글톤
 _engine = MonitorEngine()
+_engine.start()
 
 
 def get_engine() -> MonitorEngine:
