@@ -13,7 +13,8 @@
     "vue-router": "^4.5.0",
     "pinia": "^3.0.0",
     "vuetify": "^3.7.0",
-    "@mdi/font": "^7.4.0"
+    "@mdi/font": "^7.4.0",
+    "lucide-vue-next": "^0.460.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.0",

@@ -4,6 +4,10 @@ import { useTrainStore } from '@/stores/train'
 import { getStations, startMonitor } from '@/api'
 import type { Station, Train } from '@/types'
 import TrainCard from '@/components/TrainCard.vue'
+import {
+  Search, ArrowLeftRight, CalendarDays, Clock, Train as TrainIcon,
+  TicketCheck, CheckCircle, CheckCircle as CheckCircleIcon,
+} from 'lucide-vue-next'
 
 const store = useTrainStore()
 const stations = ref<Station[]>([])
@@ -39,7 +43,6 @@ const seatOptions = [
 ]
 
 const hours = Array.from({ length: 18 }, (_, i) => i + 6)
-const timeMenu = ref(false)
 const selectedHour = ref(9)
 
 onMounted(async () => {
@@ -87,7 +90,7 @@ async function onAutoMonitor(train: Train) {
     seat_option: seatOption.value,
     try_waiting: tryWaiting.value,
   })
-  monMsg.value = res.data ? '🔁 자동 예매가 시작되었습니다' : (res.error || '실패')
+  monMsg.value = res.data ? '자동 예매가 시작되었습니다' : (res.error || '실패')
   setTimeout(() => { monMsg.value = '' }, 4000)
 }
 
@@ -96,14 +99,25 @@ const dateStr = computed(() => {
   const d = new Date(depDate.value + 'T00:00:00')
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${['일','월','화','수','목','금','토'][d.getDay()]})`
 })
+
+function onDateUpdate(val: unknown) {
+  if (typeof val === 'string') depDate.value = val.slice(0, 10)
+  else if (val instanceof Date) depDate.value = val.toISOString().slice(0, 10)
+  dateMenu.value = false
+}
+
+function onHourUpdate(h: number) {
+  selectedHour.value = h
+  depTime.value = `${String(h).padStart(2, '0')}:00`
+}
 </script>
 
 <template>
   <div class="pa-4" style="max-width: 900px; margin: 0 auto;">
-    <!-- Search Card -->
     <v-card class="mb-4">
       <v-card-title class="d-flex align-center ga-2">
-        <v-icon>mdi-magnify</v-icon> 열차 조회
+        <Search :size="18" />
+        <span>열차 조회</span>
         <v-spacer />
         <span class="text-caption text-medium-emphasis">{{ stations.length }}개역</span>
       </v-card-title>
@@ -111,16 +125,14 @@ const dateStr = computed(() => {
 
       <v-card-text class="pt-4">
         <v-row dense>
-          <!-- 출발역 -->
           <v-col cols="5">
             <v-combobox v-model="dep" :items="stations.map(s => s.name)" label="출발역" variant="outlined" density="compact" hide-details />
           </v-col>
           <v-col cols="2" class="d-flex align-center justify-center">
             <v-btn icon variant="text" size="small" color="grey" @click="swapStation">
-              <v-icon>mdi-swap-horizontal</v-icon>
+              <ArrowLeftRight :size="18" />
             </v-btn>
           </v-col>
-          <!-- 도착역 -->
           <v-col cols="5">
             <v-combobox v-model="arr" :items="stations.map(s => s.name)" label="도착역" variant="outlined" density="compact" hide-details />
           </v-col>
@@ -130,13 +142,21 @@ const dateStr = computed(() => {
           <v-col cols="4">
             <v-menu v-model="dateMenu" :close-on-content-click="false">
               <template #activator="{ props }">
-                <v-text-field v-bind="props" :model-value="dateStr" label="출발일" variant="outlined" density="compact" hide-details readonly />
+                <v-text-field v-bind="props" :model-value="dateStr" label="출발일" variant="outlined" density="compact" hide-details readonly>
+                  <template #prepend-inner>
+                    <CalendarDays :size="16" style="margin-top: -2px;" />
+                  </template>
+                </v-text-field>
               </template>
-              <v-date-picker v-model="depDate" @update:model-value="dateMenu = false" />
+              <v-date-picker :model-value="depDate" @update:model-value="onDateUpdate" />
             </v-menu>
           </v-col>
           <v-col cols="3">
-            <v-select v-model="selectedHour" :items="hours" label="출발 시각" variant="outlined" density="compact" hide-details @update:model-value="depTime = String($event).padStart(2,'0') + ':00'" />
+            <v-select v-model="selectedHour" :items="hours" label="출발 시각" variant="outlined" density="compact" hide-details @update:model-value="onHourUpdate($event)">
+              <template #prepend-inner>
+                <Clock :size="16" style="margin-top: -2px;" />
+              </template>
+            </v-select>
           </v-col>
           <v-col cols="3">
             <v-select v-model="trainType" :items="trainTypes" item-title="label" item-value="value" label="열차 종류" variant="outlined" density="compact" hide-details />
@@ -150,25 +170,23 @@ const dateStr = computed(() => {
 
       <v-card-actions class="px-4 pb-4">
         <v-btn color="primary" variant="flat" size="large" :loading="store.loading" @click="onSearch">
-          <v-icon start>mdi-magnify</v-icon> 조회
+          <template #prepend><Search :size="18" /></template>
+          조회
         </v-btn>
         <v-spacer />
         <v-btn v-if="searched && store.trains.length > 0" variant="text" color="grey" size="small" @click="selectedIdx = null">선택 해제</v-btn>
       </v-card-actions>
     </v-card>
 
-    <!-- Error -->
     <v-alert v-if="store.error" type="error" variant="tonal" closable class="mb-3" density="compact">{{ store.error }}</v-alert>
     <v-alert v-if="monMsg" type="success" variant="tonal" class="mb-3" density="compact">{{ monMsg }}</v-alert>
 
-    <!-- Loading -->
     <v-row v-if="store.loading" dense>
       <v-col v-for="i in 4" :key="i" cols="6">
         <v-skeleton-loader type="card" />
       </v-col>
     </v-row>
 
-    <!-- Results -->
     <template v-else-if="store.trains.length > 0">
       <div class="text-caption text-medium-emphasis mb-2">{{ store.trains.length }}건 조회됨</div>
       <v-row dense>
@@ -183,17 +201,16 @@ const dateStr = computed(() => {
       </v-row>
     </template>
 
-    <!-- No results -->
     <v-card v-else-if="searched" class="pa-8 text-center">
-      <v-icon size="48" color="grey-lighten-1">mdi-train</v-icon>
+      <TrainIcon :size="48" class="text-grey-lighten-1" />
       <div class="text-body-1 text-medium-emphasis mt-2">{{ store.message || '조건에 맞는 열차가 없습니다' }}</div>
       <div class="text-caption text-disabled mt-1">검색 조건을 변경해보세요</div>
     </v-card>
 
-    <!-- Reserve Panel -->
     <v-card v-if="selectedIdx !== null && store.trains[selectedIdx]" class="mt-4" color="primary-lighten-5" variant="tonal">
       <v-card-title class="d-flex align-center ga-2 text-body-1 font-weight-bold">
-        <v-icon>mdi-ticket-confirmation</v-icon> 예약: {{ store.trains[selectedIdx].train_type }} {{ store.trains[selectedIdx].train_no }}
+        <TicketCheck :size="18" />
+        <span>예약: {{ store.trains[selectedIdx].train_type }} {{ store.trains[selectedIdx].train_no }}</span>
         <v-spacer />
         <span class="text-caption text-medium-emphasis font-weight-regular">{{ store.trains[selectedIdx].dep_name }} → {{ store.trains[selectedIdx].arr_name }}</span>
       </v-card-title>
@@ -206,15 +223,16 @@ const dateStr = computed(() => {
       </v-card-text>
       <v-card-actions class="px-4 pb-4">
         <v-btn color="primary" variant="flat" :loading="store.loading" @click="onReserve">
-          <v-icon start>mdi-check</v-icon> 예약하기
+          <template #prepend><CheckCircleIcon :size="18" /></template>
+          예약하기
         </v-btn>
       </v-card-actions>
     </v-card>
 
-    <!-- Reserve Result -->
     <v-card v-if="store.reserveResult" class="mt-4" color="success" variant="tonal">
       <v-card-title class="d-flex align-center ga-2">
-        <v-icon>mdi-check-circle</v-icon> 예약 완료
+        <CheckCircle :size="18" />
+        <span>예약 완료</span>
       </v-card-title>
       <v-card-text class="pt-0">
         <div class="d-flex ga-4 flex-wrap">
@@ -223,7 +241,8 @@ const dateStr = computed(() => {
           <div><span class="text-caption text-medium-emphasis">좌석</span><br><span class="text-body-2">{{ store.reserveResult.seat_count }}석</span></div>
         </div>
         <v-alert type="warning" variant="tonal" density="compact" class="mt-2">
-          ⏰ 구입기한: {{ store.reserveResult.limit_display }}까지 · 결제는 코레일 앱/웹에서 직접 해주세요
+          <template #prepend><Clock :size="16" /></template>
+          구입기한: {{ store.reserveResult.limit_display }}까지 &middot; 결제는 코레일 앱/웹에서 직접 해주세요
         </v-alert>
       </v-card-text>
       <v-card-actions>
