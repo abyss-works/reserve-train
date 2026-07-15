@@ -180,13 +180,16 @@ def _patch_korail():
             nonce = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
             req.headers["x-dynapath-m-token"] = engine.generate_token(device_id, ts, nonce)
 
-            # Sid 파라미터
+            # Sid 파라미터 (POST=body, GET=query string)
             if AES is not None and pad is not None:
                 plaintext = f"{_device}{ts}".encode("utf-8")
                 cipher = AES.new(sid_key, AES.MODE_CBC, iv=sid_key)
                 sid = base64.b64encode(cipher.encrypt(pad(plaintext, 16))).decode("utf-8") + "\n"
 
-                if req.body:
+                if req.method == "GET":
+                    separator = "&" if "?" in req.url else "?"
+                    req.url = req.url + separator + f"Sid={sid}"
+                elif req.body:
                     body = req.body
                     if isinstance(body, bytes):
                         body = body.decode("utf-8", errors="replace")
