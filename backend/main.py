@@ -126,7 +126,7 @@ def search_trains(
     date: str = "",
     time: str = "",
     train_type: str = "ktx",
-    include_no_seats: bool = False,
+    include_no_seats: bool = True,
     include_waiting_list: bool = False,
     session_id: str = "",
 ):

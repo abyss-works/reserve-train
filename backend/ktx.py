@@ -187,8 +187,9 @@ def _patch_korail():
                 sid = base64.b64encode(cipher.encrypt(pad(plaintext, 16))).decode("utf-8") + "\n"
 
                 if req.method == "GET":
+                    import urllib.parse
                     separator = "&" if "?" in req.url else "?"
-                    req.url = req.url + separator + f"Sid={sid}"
+                    req.url = req.url + separator + f"Sid={urllib.parse.quote(sid)}"
                 elif req.body:
                     body = req.body
                     if isinstance(body, bytes):
@@ -344,7 +345,7 @@ class KorailClient:
             raise KorailClientError(f"알 수 없는 오류: {e}") from e
 
     def search(self, dep, arr, date=None, time=None, train_type="ktx",
-               include_no_seats=False, include_waiting_list=False):
+               include_no_seats=True, include_waiting_list=False):
         if not self._logged_in or self._korail is None:
             raise AuthError("로그인이 필요합니다")
 
