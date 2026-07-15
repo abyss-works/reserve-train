@@ -1,24 +1,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
 import { useTrainStore } from '@/stores/train'
-import SearchTab from '@/views/SearchTab.vue'
-import ReservationsTab from '@/views/ReservationsTab.vue'
-import MonitorTab from '@/views/MonitorTab.vue'
 import { Train, User, LogOut, Search, Ticket, Clock, Menu } from 'lucide-vue-next'
 
 const { mobile } = useDisplay()
+const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 const store = useTrainStore()
 const drawer = ref(false)
-const activeTab = ref<'search' | 'reservations' | 'monitor'>('search')
 
 const korailId = ref('')
 const korailPw = ref('')
 const loginError = ref('')
 const loginLoading = ref(false)
 
+const activeTab = computed(() => (route.name as string) || 'search')
 const drawerProps = computed(() => mobile.value
   ? { temporary: true, width: 280 }
   : { permanent: true, width: 240 }
@@ -36,15 +36,14 @@ async function onLogin() {
 
 function onLogout() { auth.logout(); store.clearAll(); drawer.value = false }
 
-function setTab(tab: 'search' | 'reservations' | 'monitor') {
-  activeTab.value = tab; drawer.value = false
-  if (tab === 'reservations') store.loadReservations()
+function goTab(name: string) {
+  router.push({ name }); drawer.value = false
+  if (name === 'reservations') store.loadReservations()
 }
 </script>
 
 <template>
   <v-app>
-    <!-- App Bar (always visible) -->
     <v-app-bar elevation="1">
       <v-app-bar-nav-icon v-if="mobile" @click="drawer = !drawer">
         <Menu :size="20" />
@@ -60,7 +59,6 @@ function setTab(tab: 'search' | 'reservations' | 'monitor') {
       </template>
     </v-app-bar>
 
-    <!-- Navigation Drawer (temporary on mobile, permanent on desktop) -->
     <v-navigation-drawer v-model="drawer" v-bind="drawerProps">
       <div class="pa-4 d-flex align-center ga-2 border-b">
         <Train :size="20" class="text-primary" />
@@ -89,23 +87,20 @@ function setTab(tab: 'search' | 'reservations' | 'monitor') {
       <v-divider />
 
       <v-list nav density="comfortable">
-        <v-list-item title="열차 조회" :active="activeTab === 'search'" @click="setTab('search')">
+        <v-list-item title="열차 조회" :active="activeTab === 'search'" @click="goTab('search')">
           <template #prepend><Search :size="18" /></template>
         </v-list-item>
-        <v-list-item title="예약 내역" :active="activeTab === 'reservations'" @click="setTab('reservations')">
+        <v-list-item title="예약 내역" :active="activeTab === 'reservations'" @click="goTab('reservations')">
           <template #prepend><Ticket :size="18" /></template>
         </v-list-item>
-        <v-list-item title="자동 예매" :active="activeTab === 'monitor'" @click="setTab('monitor')">
+        <v-list-item title="자동 예매" :active="activeTab === 'monitor'" @click="goTab('monitor')">
           <template #prepend><Clock :size="18" /></template>
         </v-list-item>
       </v-list>
     </v-navigation-drawer>
 
-    <!-- Main -->
     <v-main class="bg-grey-lighten-3" style="min-height: 100dvh;">
-      <SearchTab v-if="activeTab === 'search'" />
-      <ReservationsTab v-else-if="activeTab === 'reservations'" />
-      <MonitorTab v-else-if="activeTab === 'monitor'" />
+      <router-view />
     </v-main>
   </v-app>
 </template>
